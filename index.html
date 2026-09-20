@@ -277,17 +277,17 @@
                             </div>
                         </div>
 
-                        <!-- Status KBM Hari Ini per Kelas & Charts -->
+                        <!-- Status KBM Bulan Ini per Kelas & Charts (DIPERBAHARUI MENJADI DATA BULANAN) -->
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                                 <div class="flex items-center justify-between border-b pb-3">
                                     <div>
                                         <h3 class="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                                            <i class="fa-solid fa-chart-bar text-blue-700"></i> Distribusi Jurnal & KBM Per Kelas Hari Ini
+                                            <i class="fa-solid fa-chart-bar text-blue-700"></i> Distribusi Jurnal & KBM Per Kelas Bulan Ini
                                         </h3>
-                                        <p class="text-xs text-slate-500">Menampilkan statistik entri jam mengajar yang berhasil direkam</p>
+                                        <p class="text-xs text-slate-500">Menampilkan statistik akumulasi entri jam mengajar bulan ini</p>
                                     </div>
-                                    <span class="text-xs font-bold bg-blue-100 text-blue-800 px-3 py-1 rounded-full" x-text="getTodayDateFormatted()"></span>
+                                    <span class="text-xs font-bold bg-blue-100 text-blue-800 px-3 py-1 rounded-full" x-text="getCurrentMonthFormatted()"></span>
                                 </div>
                                 <div class="h-64 relative">
                                     <canvas id="journalBarChart"></canvas>
@@ -297,9 +297,9 @@
                             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                                 <div class="border-b pb-3">
                                     <h3 class="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                                        <i class="fa-solid fa-chart-pie text-indigo-700"></i> Proporsi Kehadiran Siswa
+                                        <i class="fa-solid fa-chart-pie text-indigo-700"></i> Proporsi Kehadiran Siswa Bulan Ini
                                     </h3>
-                                    <p class="text-xs text-slate-500">Rasio Sakit, Izin, Alpa terhadap Kehadiran</p>
+                                    <p class="text-xs text-slate-500">Rasio Sakit, Izin, Alpa terhadap Kehadiran (Bulanan)</p>
                                 </div>
                                 <div class="h-64 relative">
                                     <canvas id="statusPieChart"></canvas>
@@ -1521,7 +1521,7 @@
 
     <!-- KONFIGURASI SUPABASE & ALPINE JS SCRIPT -->
     <script>
-        // INISIALISASI SUPABASE CLIENT DENGAN KREDENSIAL PENGGUNA
+        // INISIALISASI SUPABASE CLIENT
         const SUPABASE_URL = 'https://avjtdehtricfspiydvfv.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2anRkZWh0cmljZnNwaXlkdmZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4NjM3OTgsImV4cCI6MjEwNTQzOTc5OH0.S7pOMWNWNuBWEY09lo7p_hHoMlTiFcjtrUosHu-K_9M';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1851,7 +1851,7 @@
                     }
                 },
 
-                // SUBMIT & CRUD JURNAL (SUPABASE INTEGRATED)
+                // SUBMIT & CRUD JURNAL
                 async submitJournal() {
                     if (this.isWeekend) {
                         this.addToast('Tidak bisa menginput jurnal pada hari libur (Sabtu/Minggu)', 'error');
@@ -2381,7 +2381,7 @@
                     this.showConfirmModal = true;
                 },
 
-                // STATISTIK & GETTERS
+                // HELPER TANGGAL & BULAN
                 getTodayDateStr() {
                     const today = new Date();
                     const yyyy = today.getFullYear();
@@ -2393,6 +2393,23 @@
                 getTodayDateFormatted() {
                     const today = new Date();
                     return today.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                },
+
+                getCurrentMonthStr() {
+                    const today = new Date();
+                    const yyyy = today.getFullYear();
+                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                    return `${yyyy}-${mm}`;
+                },
+
+                getCurrentMonthFormatted() {
+                    const today = new Date();
+                    return today.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                },
+
+                getMonthJournalsList() {
+                    const currentMonth = this.getCurrentMonthStr();
+                    return this.journals.filter(j => j.date && j.date.startsWith(currentMonth));
                 },
 
                 getTodayJournalsList() {
@@ -2572,17 +2589,17 @@
                     e.target.value = '';
                 },
 
-                // CHARTS RENDERING
+                // CHARTS RENDERING (BULANAN)
                 renderCharts() {
                     if (typeof Chart === 'undefined') return;
 
-                    const todayStr = this.getTodayDateStr();
-                    const todayJournals = this.journals.filter(j => j.date === todayStr);
+                    // Dapatkan data jurnal khusus bulan ini
+                    const monthJournals = this.getMonthJournalsList();
 
-                    // Bar Chart: Jumlah Jurnal per Kelas
+                    // Bar Chart: Jumlah Jurnal per Kelas Bulan Ini
                     const classCounts = {};
                     this.classList.forEach(c => classCounts[c] = 0);
-                    todayJournals.forEach(j => {
+                    monthJournals.forEach(j => {
                         if (classCounts[j.class_name] !== undefined) {
                             classCounts[j.class_name]++;
                         } else {
@@ -2601,7 +2618,7 @@
                             data: {
                                 labels: barLabels.length > 0 ? barLabels : ['Belum Ada Kelas'],
                                 datasets: [{
-                                    label: 'Jam KBM Terisi',
+                                    label: 'Jam KBM Terisi (Bulan Ini)',
                                     data: barData.length > 0 ? barData : [0],
                                     backgroundColor: '#1d4ed8',
                                     borderRadius: 6
@@ -2616,13 +2633,13 @@
                         });
                     }
 
-                    // Pie Chart: Status Absensi
+                    // Pie Chart: Status Absensi Bulan Ini
                     let totalHadir = 0, totalSakit = 0, totalIzin = 0, totalAlpa = 0;
-                    todayJournals.forEach(j => {
+                    monthJournals.forEach(j => {
                         totalSakit += Number(j.sakit) || 0;
                         totalIzin += Number(j.izin) || 0;
                         totalAlpa += Number(j.alpa) || 0;
-                        totalHadir += 30; // Estimasi standar per kelas
+                        totalHadir += 30; // Estimasi standar hadir per sesi KBM
                     });
 
                     const ctxPie = document.getElementById('statusPieChart');
