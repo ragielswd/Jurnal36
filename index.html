@@ -299,7 +299,7 @@
                                     <h3 class="font-extrabold text-slate-800 text-base flex items-center gap-2">
                                         <i class="fa-solid fa-chart-pie text-indigo-700"></i> Proporsi Kehadiran Siswa Bulan Ini
                                     </h3>
-                                    <p class="text-xs text-slate-500">Rasio Sakit, Izin, Alpa terhadap Kehadiran (Bulanan)</p>
+                                    <p class="text-xs text-slate-500">Perbandingan Sakit, Izin, dan Alpa Siswa (Bulanan)</p>
                                 </div>
                                 <div class="h-64 relative">
                                     <canvas id="statusPieChart"></canvas>
@@ -326,7 +326,7 @@
                                             <th class="p-3">Kelas</th>
                                             <th class="p-3">Jam Ke-</th>
                                             <th class="p-3">Mata Pelajaran</th>
-                                            <th class="p-3">Guru Mengajar</th>
+                                            <th class="p-3">Nama Guru</th>
                                             <th class="p-3">Materi / Topik</th>
                                             <th class="p-3">Kehadiran (S / I / A)</th>
                                         </tr>
@@ -963,7 +963,6 @@
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" :class="{'opacity-50 pointer-events-none': isWeekend}">
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Guru Mengajar</label>
-                                        <!-- PILIHAN GURU TERSARING BERDASARKAN KELAS SISWA -->
                                         <select x-model="selectedTeacherId" @change="onTeacherSelect()" :disabled="isWeekend" required class="w-full text-xs px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
                                             <option value="">-- Pilih Guru --</option>
                                             <template x-for="t in getTeachersForCurrentClass()" :key="t.id">
@@ -978,7 +977,6 @@
 
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-700 mb-1">Mata Pelajaran</label>
-                                        <!-- PILIHAN MAPEL TERSARING BERDASARKAN GURU & KELAS SISWA -->
                                         <select x-model="formJournal.subject" required :disabled="!selectedTeacherId || isWeekend" class="w-full text-xs px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-400 font-medium">
                                             <option value="">-- Pilih Mata Pelajaran --</option>
                                             <template x-for="subj in getAvailableJournalSubjects()" :key="subj">
@@ -1250,6 +1248,7 @@
                 <div class="p-3 bg-amber-50/50 border border-amber-200 rounded-xl space-y-2">
                     <div class="flex items-center justify-between">
                         <label class="block font-bold text-slate-800">Siswa Tidak Hadir (Sakit, Izin, Alpa)</label>
+                        <span class="text-[10px] text-amber-800 italic">*Mengubah absensi akan menyesuaikan seluruh record hari ini untuk kelas ini</span>
                     </div>
                     <div class="grid grid-cols-3 gap-2">
                         <div>
@@ -1756,7 +1755,6 @@
                         localStorage.setItem('smpn36_session_user', JSON.stringify(this.currentUser));
                         this.activeTab = 'siswa-dash';
                         
-                        // Reset form & sinkronkan kehadiran sesuai kelas siswa login
                         this.setFormToToday();
                         this.selectedTeacherId = '';
                         this.formJournal.teacher = '';
@@ -1775,7 +1773,6 @@
                     this.currentUser = null;
                     localStorage.removeItem('smpn36_session_user');
                     
-                    // Reset form & status absensi
                     this.formJournal.sakit = 0;
                     this.formJournal.izin = 0;
                     this.formJournal.alpa = 0;
@@ -1813,7 +1810,6 @@
                     this.checkAttendanceLock();
                 },
 
-                // CEK KUNCI ABSENSI SPESIFIK BERDASARKAN KELAS SISWA LOGIN DAN TANGGAL
                 checkAttendanceLock() {
                     if (!this.currentUser || this.currentUser.role !== 'siswa' || !this.currentUser.class_name) return;
                     
@@ -1843,22 +1839,19 @@
                                                   (Number(this.formJournal.alpa) || 0);
                 },
 
-                // FILTER DAFTAR GURU KHUSUS KELAS SISWA LOGIN
                 getTeachersForCurrentClass() {
                     if (!this.currentUser || this.currentUser.role !== 'siswa' || !this.currentUser.class_name) {
                         return this.teachers;
                     }
                     const studentClass = this.currentUser.class_name;
                     return this.teachers.filter(t => {
-                        // Cek pemetaan subjectClasses
                         if (t.subjectClasses && Object.keys(t.subjectClasses).length > 0) {
                             return Object.values(t.subjectClasses).some(clsList => 
                                 !clsList || clsList.length === 0 || clsList.includes(studentClass)
                             );
                         }
-                        // Cek pemetaan kelas umum
                         const clsArr = this.getTeacherClassesArray(t);
-                        if (clsArr.length === 0) return true; // Mengajar semua kelas
+                        if (clsArr.length === 0) return true;
                         return clsArr.includes(studentClass);
                     });
                 },
@@ -1880,7 +1873,6 @@
                     }
                 },
 
-                // FILTER MATA PELAJARAN KHUSUS UNTUK GURU & KELAS SISWA
                 getAvailableJournalSubjects() {
                     if (this.selectedTeacherId === 'custom') return this.subjectList;
                     if (!this.selectedTeacherId) return [];
@@ -2008,11 +2000,14 @@
                                                        (Number(this.editJournalForm.alpa) || 0);
                 },
 
+                // UPDATE JURNAL + SINKRONISASI ABSENSI SELURUH RECORD DI HARI & KELAS YANG SAMA
                 async saveEditJournal() {
                     const idx = this.journals.findIndex(j => j.id === this.editJournalForm.id);
                     if (idx !== -1) {
                         const updated = JSON.parse(JSON.stringify(this.editJournalForm));
+                        
                         try {
+                            // Update spesifik record ini
                             await supabaseClient.from('journals').update({
                                 date: updated.date,
                                 day: updated.day,
@@ -2026,11 +2021,32 @@
                                 absent_count: updated.absent_count,
                                 topic: updated.topic
                             }).eq('id', updated.id);
-                        } catch(e){}
+
+                            // Sinkronkan absensi ke seluruh record kelas & tanggal yang sama di Supabase
+                            await supabaseClient.from('journals').update({
+                                sakit: updated.sakit,
+                                izin: updated.izin,
+                                alpa: updated.alpa,
+                                absent_count: updated.absent_count
+                            }).eq('class_name', updated.class_name).eq('date', updated.date);
+
+                        } catch(e){
+                            console.error(e);
+                        }
+
+                        // Sinkronkan absensi di state lokal browser
+                        this.journals.forEach(j => {
+                            if (j.class_name === updated.class_name && j.date === updated.date) {
+                                j.sakit = updated.sakit;
+                                j.izin = updated.izin;
+                                j.alpa = updated.alpa;
+                                j.absent_count = updated.absent_count;
+                            }
+                        });
 
                         this.journals[idx] = updated;
                         this.saveToStorage();
-                        this.addToast('Data jurnal berhasil diperbarui', 'success');
+                        this.addToast('Data jurnal & penyesuaian absensi harian berhasil diperbarui', 'success');
                         this.showEditJournalModal = false;
                     }
                 },
@@ -2495,12 +2511,30 @@
                     return fullClasses.size;
                 },
 
+                // DEDUPLIKASI KEHADIRAN PER KELAS PER HARI (Mencegah penjumlahan berulang dari tiap jam ke-)
+                getTodayUniqueClassAttendance() {
+                    const todayStr = this.getTodayDateStr();
+                    const todayJournals = this.journals.filter(j => j.date === todayStr);
+                    const classMap = {};
+                    todayJournals.forEach(j => {
+                        if (!classMap[j.class_name]) {
+                            classMap[j.class_name] = {
+                                sakit: Number(j.sakit) || 0,
+                                izin: Number(j.izin) || 0,
+                                alpa: Number(j.alpa) || 0,
+                                absent_count: Number(j.absent_count) || 0
+                            };
+                        }
+                    });
+                    return Object.values(classMap);
+                },
+
                 getTodayTotalAbsentCount() {
-                    return this.getTodayJournalsList().reduce((acc, curr) => acc + (Number(curr.absent_count) || 0), 0);
+                    return this.getTodayUniqueClassAttendance().reduce((acc, curr) => acc + (Number(curr.absent_count) || 0), 0);
                 },
 
                 getTodayAbsentBreakdownString() {
-                    const list = this.getTodayJournalsList();
+                    const list = this.getTodayUniqueClassAttendance();
                     let s = 0, i = 0, a = 0;
                     list.forEach(j => {
                         s += Number(j.sakit) || 0;
@@ -2650,11 +2684,10 @@
                     e.target.value = '';
                 },
 
-                // CHARTS RENDERING (BULANAN)
+                // CHARTS RENDERING (GRAFIK BAR & GRAFIK PIE KHUSUS SAKIT, IZIN, ALPA)
                 renderCharts() {
                     if (typeof Chart === 'undefined') return;
 
-                    // Dapatkan data jurnal khusus bulan ini
                     const monthJournals = this.getMonthJournalsList();
 
                     // Bar Chart: Jumlah Jurnal per Kelas Bulan Ini
@@ -2694,13 +2727,24 @@
                         });
                     }
 
-                    // Pie Chart: Status Absensi Bulan Ini
-                    let totalHadir = 0, totalSakit = 0, totalIzin = 0, totalAlpa = 0;
+                    // Pie Chart: Status Sakit, Izin, dan Alpa Bulan Ini (Deduplikasi per Kelas per Tanggal)
+                    const uniqueClassDateAttendance = {};
                     monthJournals.forEach(j => {
-                        totalSakit += Number(j.sakit) || 0;
-                        totalIzin += Number(j.izin) || 0;
-                        totalAlpa += Number(j.alpa) || 0;
-                        totalHadir += 30; // Estimasi standar hadir per sesi KBM
+                        const key = `${j.class_name}_${j.date}`;
+                        if (!uniqueClassDateAttendance[key]) {
+                            uniqueClassDateAttendance[key] = {
+                                sakit: Number(j.sakit) || 0,
+                                izin: Number(j.izin) || 0,
+                                alpa: Number(j.alpa) || 0
+                            };
+                        }
+                    });
+
+                    let totalSakit = 0, totalIzin = 0, totalAlpa = 0;
+                    Object.values(uniqueClassDateAttendance).forEach(item => {
+                        totalSakit += item.sakit;
+                        totalIzin += item.izin;
+                        totalAlpa += item.alpa;
                     });
 
                     const ctxPie = document.getElementById('statusPieChart');
@@ -2709,10 +2753,10 @@
                         this.pieChart = new Chart(ctxPie, {
                             type: 'doughnut',
                             data: {
-                                labels: ['Hadir', 'Sakit', 'Izin', 'Alpa'],
+                                labels: ['Sakit', 'Izin', 'Alpa'],
                                 datasets: [{
-                                    data: [totalHadir, totalSakit, totalIzin, totalAlpa],
-                                    backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#ef4444']
+                                    data: [totalSakit, totalIzin, totalAlpa],
+                                    backgroundColor: ['#f59e0b', '#3b82f6', '#ef4444']
                                 }]
                             },
                             options: {
