@@ -277,7 +277,7 @@
                             </div>
                         </div>
 
-                        <!-- Status KBM Bulan Ini per Kelas & Charts (DIPERBAHARUI MENJADI DATA BULANAN) -->
+                        <!-- Status KBM Bulan Ini per Kelas & Charts -->
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                                 <div class="flex items-center justify-between border-b pb-3">
@@ -963,9 +963,10 @@
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" :class="{'opacity-50 pointer-events-none': isWeekend}">
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Guru Mengajar</label>
+                                        <!-- PILIHAN GURU TERSARING BERDASARKAN KELAS SISWA -->
                                         <select x-model="selectedTeacherId" @change="onTeacherSelect()" :disabled="isWeekend" required class="w-full text-xs px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
                                             <option value="">-- Pilih Guru --</option>
-                                            <template x-for="t in teachers" :key="t.id">
+                                            <template x-for="t in getTeachersForCurrentClass()" :key="t.id">
                                                 <option :value="t.id" x-text="t.name + ' (' + getTeacherSubjectsArray(t).join('; ') + ')'"></option>
                                             </template>
                                             <option value="custom">-- Input Manual / Guru Tamu --</option>
@@ -977,6 +978,7 @@
 
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-700 mb-1">Mata Pelajaran</label>
+                                        <!-- PILIHAN MAPEL TERSARING BERDASARKAN GURU & KELAS SISWA -->
                                         <select x-model="formJournal.subject" required :disabled="!selectedTeacherId || isWeekend" class="w-full text-xs px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-400 font-medium">
                                             <option value="">-- Pilih Mata Pelajaran --</option>
                                             <template x-for="subj in getAvailableJournalSubjects()" :key="subj">
@@ -1647,6 +1649,9 @@
                         try {
                             this.currentUser = JSON.parse(savedUser);
                             this.activeTab = this.currentUser.role === 'admin' ? 'dashboard' : 'siswa-dash';
+                            if (this.currentUser.role === 'siswa') {
+                                this.checkAttendanceLock();
+                            }
                         } catch (e) {
                             localStorage.removeItem('smpn36_session_user');
                         }
@@ -1661,6 +1666,8 @@
                     this.$watch('journals', () => {
                         if (this.currentUser?.role === 'admin' && this.activeTab === 'dashboard') {
                             this.$nextTick(() => this.renderCharts());
+                        } else if (this.currentUser?.role === 'siswa') {
+                            this.checkAttendanceLock();
                         }
                     }, { deep: true });
                 },
@@ -1748,7 +1755,15 @@
                         this.currentUser = { name: st.name, role: 'siswa', class_name: st.class_name, token: st.token };
                         localStorage.setItem('smpn36_session_user', JSON.stringify(this.currentUser));
                         this.activeTab = 'siswa-dash';
-                        this.studentHistoryDate = this.formJournal.date;
+                        
+                        // Reset form & sinkronkan kehadiran sesuai kelas siswa login
+                        this.setFormToToday();
+                        this.selectedTeacherId = '';
+                        this.formJournal.teacher = '';
+                        this.formJournal.subject = '';
+                        this.selectedPeriods = [];
+                        this.formJournal.topic = '';
+                        
                         this.addToast(`Selamat datang ${st.name} (Kelas ${st.class_name})`, 'success');
                         this.inputToken = '';
                     } else {
@@ -1759,6 +1774,16 @@
                 logout() {
                     this.currentUser = null;
                     localStorage.removeItem('smpn36_session_user');
+                    
+                    // Reset form & status absensi
+                    this.formJournal.sakit = 0;
+                    this.formJournal.izin = 0;
+                    this.formJournal.alpa = 0;
+                    this.formJournal.absent_count = 0;
+                    this.isAttendanceLocked = false;
+                    this.selectedTeacherId = '';
+                    this.selectedPeriods = [];
+                    
                     this.addToast('Anda telah logout.', 'info');
                 },
 
@@ -1788,8 +1813,9 @@
                     this.checkAttendanceLock();
                 },
 
+                // CEK KUNCI ABSENSI SPESIFIK BERDASARKAN KELAS SISWA LOGIN DAN TANGGAL
                 checkAttendanceLock() {
-                    if (!this.currentUser || this.currentUser.role !== 'siswa') return;
+                    if (!this.currentUser || this.currentUser.role !== 'siswa' || !this.currentUser.class_name) return;
                     
                     const existing = this.journals.find(j => 
                         j.class_name === this.currentUser.class_name && 
@@ -1797,10 +1823,10 @@
                     );
 
                     if (existing) {
-                        this.formJournal.sakit = existing.sakit || 0;
-                        this.formJournal.izin = existing.izin || 0;
-                        this.formJournal.alpa = existing.alpa || 0;
-                        this.formJournal.absent_count = existing.absent_count || 0;
+                        this.formJournal.sakit = Number(existing.sakit) || 0;
+                        this.formJournal.izin = Number(existing.izin) || 0;
+                        this.formJournal.alpa = Number(existing.alpa) || 0;
+                        this.formJournal.absent_count = Number(existing.absent_count) || 0;
                         this.isAttendanceLocked = true;
                     } else {
                         this.formJournal.sakit = 0;
@@ -1817,6 +1843,26 @@
                                                   (Number(this.formJournal.alpa) || 0);
                 },
 
+                // FILTER DAFTAR GURU KHUSUS KELAS SISWA LOGIN
+                getTeachersForCurrentClass() {
+                    if (!this.currentUser || this.currentUser.role !== 'siswa' || !this.currentUser.class_name) {
+                        return this.teachers;
+                    }
+                    const studentClass = this.currentUser.class_name;
+                    return this.teachers.filter(t => {
+                        // Cek pemetaan subjectClasses
+                        if (t.subjectClasses && Object.keys(t.subjectClasses).length > 0) {
+                            return Object.values(t.subjectClasses).some(clsList => 
+                                !clsList || clsList.length === 0 || clsList.includes(studentClass)
+                            );
+                        }
+                        // Cek pemetaan kelas umum
+                        const clsArr = this.getTeacherClassesArray(t);
+                        if (clsArr.length === 0) return true; // Mengajar semua kelas
+                        return clsArr.includes(studentClass);
+                    });
+                },
+
                 onTeacherSelect() {
                     if (this.selectedTeacherId === 'custom') {
                         this.formJournal.teacher = '';
@@ -1825,7 +1871,7 @@
                         const teacher = this.teachers.find(t => t.id == this.selectedTeacherId);
                         if (teacher) {
                             this.formJournal.teacher = teacher.name;
-                            const subjs = this.getTeacherSubjectsArray(teacher);
+                            const subjs = this.getAvailableJournalSubjects();
                             this.formJournal.subject = subjs.length > 0 ? subjs[0] : '';
                         }
                     } else {
@@ -1834,11 +1880,26 @@
                     }
                 },
 
+                // FILTER MATA PELAJARAN KHUSUS UNTUK GURU & KELAS SISWA
                 getAvailableJournalSubjects() {
                     if (this.selectedTeacherId === 'custom') return this.subjectList;
                     if (!this.selectedTeacherId) return [];
                     const teacher = this.teachers.find(t => t.id == this.selectedTeacherId);
-                    return teacher ? this.getTeacherSubjectsArray(teacher) : [];
+                    if (!teacher) return [];
+
+                    const allTeacherSubjs = this.getTeacherSubjectsArray(teacher);
+
+                    if (this.currentUser && this.currentUser.role === 'siswa' && this.currentUser.class_name) {
+                        const studentClass = this.currentUser.class_name;
+                        if (teacher.subjectClasses && Object.keys(teacher.subjectClasses).length > 0) {
+                            return allTeacherSubjs.filter(subj => {
+                                const clsList = teacher.subjectClasses[subj];
+                                return !clsList || clsList.length === 0 || clsList.includes(studentClass);
+                            });
+                        }
+                    }
+
+                    return allTeacherSubjs;
                 },
 
                 togglePeriod(period) {
